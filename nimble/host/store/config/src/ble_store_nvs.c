@@ -52,6 +52,9 @@
 
 static const char *TAG = "NIMBLE_NVS";
 
+// Cache the number of records in NVS
+int ble_store_nvs_num_cccds;
+
 /*****************************************************************************
  * $ MISC                                                                    *
  *****************************************************************************/
@@ -596,6 +599,7 @@ ble_nvs_restore_sec_keys(void)
         ESP_LOGE(TAG, "NVS operation failed for 'CCCD'");
         return err;
     }
+    ble_store_nvs_num_cccds = ble_store_config_num_cccds;
     ESP_LOGD(TAG, "ble_store_config_cccds restored %d bonds",
              ble_store_config_num_cccds);
 #endif
@@ -667,22 +671,19 @@ ble_nvs_restore_peer_records(void)
 #if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
 int ble_store_config_persist_cccds(void)
 {
-    int nvs_count, nvs_idx;
+    int err, nvs_idx;
     union ble_store_value val;
 
-    nvs_count = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_CCCD, 0, NULL, 0);
-    if (nvs_count == -1) {
-        ESP_LOGE(TAG, "NVS operation failed while persisting CCCD");
-        return BLE_HS_ESTORE_FAIL;
-    }
-
-    if (nvs_count < ble_store_config_num_cccds) {
-
+    if (ble_store_nvs_num_cccds < ble_store_config_num_cccds) {
         /* NVS db count less than RAM count, write operation */
         ESP_LOGD(TAG, "Persisting CCCD value in NVS...");
         val.cccd = ble_store_config_cccds[ble_store_config_num_cccds - 1];
-        return ble_store_nvs_write(BLE_STORE_OBJ_TYPE_CCCD, &val);
-    } else if (nvs_count > ble_store_config_num_cccds) {
+        err = ble_store_nvs_write(BLE_STORE_OBJ_TYPE_CCCD, &val);
+        if (err == 0) {
+            ble_store_nvs_num_cccds = ble_store_config_num_cccds;
+        }
+        return err;
+    } else if (ble_store_nvs_num_cccds > ble_store_config_num_cccds) {
         /* NVS db count more than RAM count, delete operation */
         nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_CCCD, 0,
                                        ble_store_config_cccds, ble_store_config_num_cccds);
@@ -691,7 +692,11 @@ int ble_store_config_persist_cccds(void)
             return BLE_HS_ESTORE_FAIL;
         }
         ESP_LOGD(TAG, "Deleting CCCD, nvs idx = %d", nvs_idx);
-        return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_CCCD, nvs_idx);
+        err = ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_CCCD, nvs_idx);
+        if (err == 0) {
+            ble_store_nvs_num_cccds = ble_store_config_num_cccds;
+        }
+        return err;
     }
     return 0;
 }
